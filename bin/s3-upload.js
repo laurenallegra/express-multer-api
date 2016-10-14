@@ -4,24 +4,26 @@
 require('dotenv').config();
 
 const fs = require('fs');
-const fileType = require ('file-type');
-const AWS = require ('aws-sdk');
+const crypto = require('crypto');
+
+const fileType = require('file-type');
+const AWS = require('aws-sdk');
 
 const filename = process.argv[2] || '';
 
 const readFile = (filename) => {
-  return new Promise ((resolve, reject) => {
+  return new Promise((resolve, reject) => {
     fs.readFile(filename, (error, data) => {
       if (error) {
         reject(error);
       }
 
-    resolve(data);
+      resolve(data);
     });
   });
 };
 
-// return a default object in the case the fileType is given an unsupported
+// return a default object in the case that fileType is given an unsupported
 // filetype to read
 const mimeType = (data) => {
   return Object.assign({
@@ -33,6 +35,31 @@ const mimeType = (data) => {
 const parseFile = (fileBuffer) => {
   let file = mimeType(fileBuffer);
   file.data = fileBuffer;
+  return file;
+};
+
+const randomHexString = (length) => {
+  return new Promise((resolve, reject) => {
+    crypto.randomBytes(length, (error, buffer) => {
+      if (error) {
+        reject(error);
+      }
+
+      resolve(buffer.toString('hex'));
+    });
+  });
+};
+
+const nameFile = (file) => {
+  return randomHexString(16)
+  .then((val) => {
+    file.name = val;
+    return file;
+  });
+};
+
+const nameDirectory = (file) => {
+  file.dir = new Date().toISOString().split('T')[0];
   return file;
 };
 
@@ -51,13 +78,13 @@ const upload = (file) => {
     Body: file.data,
     // allow anyone to access the URL of the uploaded file
     ACL: 'public-read',
-    // tell s3 what the mime-type is
+    // tell S3 what the mime-type is
     ContentType: file.mime,
     // pick a filename for S3 to use for the upload
-    Key: `test/test.${file.ext}`
+    Key: `${file.dir}/${file.name}.${file.ext}`
   };
 
-  return new Promise ((resolve, reject) => {
+  return new Promise((resolve, reject) => {
     s3.upload(options, (error, data) => {
       if (error) {
         reject(error);
@@ -69,11 +96,14 @@ const upload = (file) => {
 };
 
 const logMessage = (response) => {
-  console.log(`The response from AWS was ${JSON.stringify(response)}`);
+  // turn the pojo into a string so I can see it on the console
+  console.log(`the response from AWS was ${JSON.stringify(response)}`);
 };
 
 readFile(filename)
 .then(parseFile)
+.then(nameFile)
+.then(nameDirectory)
 .then(upload)
 .then(logMessage)
 .catch(console.error)
